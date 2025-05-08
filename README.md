@@ -2,7 +2,7 @@
 
 # 🏡 Real Estate Price Prediction using Multiple Linear Regression
 
-This project is a complete case study on predicting housing prices in Delhi, India using **Multiple Linear Regression**. The dataset contains various features such as property size, number of bedrooms/bathrooms, amenities, furnishing status, and more.
+This project is predicting housing prices in Delhi, India using **Multiple Linear Regression**. The dataset contains various features such as property size, number of bedrooms/bathrooms, amenities, furnishing status, and more.
 
 ---
 
