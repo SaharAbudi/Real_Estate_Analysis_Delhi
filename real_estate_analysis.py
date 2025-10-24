@@ -151,12 +151,20 @@ for name, scaler in scalers.items():
 # MULTICOLLINEARITY (VIF)
 # ----------------------------------------------------
 st.subheader("📉 Variance Inflation Factor (VIF)")
-X = df_log.drop(["price", "price_log"], axis=1)
-vif_data = pd.DataFrame({
-    "Feature": X.columns,
-    "VIF": [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
-})
-st.dataframe(vif_data.sort_values("VIF", ascending=False))
+
+try:
+    X = df_log.drop(["price", "price_log"], axis=1)
+    X = X.select_dtypes(include=[np.number]).dropna()
+    X = X[np.isfinite(X).all(axis=1)]
+
+    vif_data = pd.DataFrame()
+    vif_data["Feature"] = X.columns
+    vif_data["VIF"] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+
+    st.dataframe(vif_data.sort_values("VIF", ascending=False))
+
+except Exception as e:
+    st.error(f"⚠️ Unable to compute VIF due to data issue: {e}")
 
 # ----------------------------------------------------
 # LINEAR REGRESSION MODEL
@@ -181,8 +189,9 @@ mse = mean_squared_error(y_test, y_pred)
 rmse = np.sqrt(mse)
 
 st.write("### Model Performance")
-st.metric("R² Score", f"{r2:.3f}")
-st.metric("MAE", f"{mae:.3f}")
-st.metric("RMSE", f"{rmse:.3f}")
+col1, col2, col3 = st.columns(3)
+col1.metric("R² Score", f"{r2:.3f}")
+col2.metric("MAE", f"{mae:.3f}")
+col3.metric("RMSE", f"{rmse:.3f}")
 
 st.balloons()
