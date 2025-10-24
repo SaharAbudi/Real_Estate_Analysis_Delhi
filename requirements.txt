@@ -6,3 +6,4 @@ kagglehub
 seaborn
 plotly
 scikit-learn
+statmodels
