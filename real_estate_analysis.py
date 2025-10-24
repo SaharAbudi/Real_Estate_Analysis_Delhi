@@ -1,63 +1,90 @@
 # -*- coding: utf-8 -*-
-import pandas as pd
-import numpy as np
 import os
-
-# ✅ קריאה ישירה לקובץ מהתיקייה הראשית של הריפו
-file_path = "Housing.csv"  # ודא שהקובץ הזה באמת נמצא בתיקייה הראשית
-
-# בדיקה שהקובץ קיים לפני טעינה
-if not os.path.exists(file_path):
-    raise FileNotFoundError(f"File '{file_path}' not found. Make sure it's in the repository root.")
-
-# טעינת הדאטה
-df = pd.read_csv(file_path)
-print("✅ Dataset loaded successfully!")
-print(f"Shape: {df.shape}")
-print(df.head())
-
-
-print(f"Dataset dimensions: {df.shape[0]} rows and {df.shape[1]} columns\n")
-print("First 5 rows of the dataset:")
-display(df.head())
-
-print("\nData types and non-null counts:")
-df.info()
-
-print("Missing values in each column:")
-print(df.isnull().sum())
-
-duplicate_count = df.duplicated().sum()
-print(f"\nNumber of duplicate records: {duplicate_count}")
-
-print("Statistical summary of numerical features:")
-display(df.describe())
-
-print("\nFrequency distribution of categorical variables:")
-categorical_cols = df.select_dtypes(include=['object']).columns
-for col in categorical_cols:
-    print(f"\n{col}:")
-    print(df[col].value_counts())
-    print(f"Proportion:\n{df[col].value_counts(normalize=True)}")
-
+import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import streamlit as st
+from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from statsmodels.stats.outliers_influence import variance_inflation_factor
 
-plt.figure(figsize=(10, 6))
-sns.histplot(df['price'], kde=True)
-plt.title('Distribution of House Prices')
-plt.xlabel('Price')
-plt.ylabel('Frequency')
+# ----------------------------------------------------
+# PAGE CONFIG
+# ----------------------------------------------------
+st.set_page_config(
+    page_title="Real Estate Price Analysis",
+    page_icon="🏠",
+    layout="wide"
+)
 
-plt.show()
+st.title("🏙️ Real Estate Price Analysis Dashboard")
+st.markdown("This dashboard explores the **Housing Dataset**, analyzes trends, and builds predictive models.")
 
-print(f"Price statistics:")
-print(f"Min: {df['price'].min()}")
-print(f"Max: {df['price'].max()}")
-print(f"Mean: {df['price'].mean():.2f}")
-print(f"Median: {df['price'].median():.2f}")
-print(f"Standard deviation: {df['price'].std():.2f}")
-print(f"Skewness: {df['price'].skew():.2f}")
+# ----------------------------------------------------
+# LOAD DATA
+# ----------------------------------------------------
+file_path = "Housing.csv"
+
+if not os.path.exists(file_path):
+    st.error(f"❌ File '{file_path}' not found. Make sure it's in the repository root.")
+    st.stop()
+
+df = pd.read_csv(file_path)
+st.success("✅ Dataset loaded successfully!")
+st.write(f"**Shape:** {df.shape[0]} rows × {df.shape[1]} columns")
+
+st.subheader("Preview of Dataset")
+st.dataframe(df.head())
+
+# ----------------------------------------------------
+# DATA EXPLORATION
+# ----------------------------------------------------
+st.subheader("Data Overview")
+col1, col2 = st.columns(2)
+with col1:
+    st.write("**Data Types & Non-Null Counts:**")
+    buffer = df.dtypes.to_frame("Type").join(df.notnull().sum().rename("Non-Null Count"))
+    st.dataframe(buffer)
+with col2:
+    st.write("**Missing Values:**")
+    st.dataframe(df.isnull().sum())
+
+st.write(f"**Duplicate Records:** {df.duplicated().sum()}")
+
+# ----------------------------------------------------
+# STATISTICS
+# ----------------------------------------------------
+st.subheader("Descriptive Statistics")
+st.dataframe(df.describe())
+
+# ----------------------------------------------------
+# VISUALIZATION SECTION
+# ----------------------------------------------------
+st.subheader("📊 Price Distribution")
+fig, ax = plt.subplots(figsize=(10, 5))
+sns.histplot(df["price"], kde=True, ax=ax, color="skyblue")
+ax.set_title("Distribution of House Prices")
+ax.set_xlabel("Price")
+ax.set_ylabel("Frequency")
+st.pyplot(fig)
+
+st.markdown("**Price Summary:**")
+st.write({
+    "Min": df["price"].min(),
+    "Max": df["price"].max(),
+    "Mean": round(df["price"].mean(), 2),
+    "Median": round(df["price"].median(), 2),
+    "Std Dev": round(df["price"].std(), 2),
+    "Skewness": round(df["price"].skew(), 2)
+})
+
+# ----------------------------------------------------
+# CORRELATION
+# ----------------------------------------------------
+st.subheader("🔗 Correlation Matrix")
 
 df_numeric = df.copy()
 binary_cols = ['mainroad', 'guestroom', 'basement', 'hotwaterheating', 'airconditioning', 'prefarea']
@@ -65,188 +92,97 @@ for col in binary_cols:
     df_numeric[col] = df_numeric[col].map({'yes': 1, 'no': 0, 'Yes': 1, 'No': 0})
 
 df_numeric = pd.get_dummies(df_numeric, columns=['furnishingstatus'], drop_first=True)
-display(df_numeric.head())
 
-correlation = df_numeric.corr()
-plt.figure(figsize=(12, 8))
-sns.heatmap(correlation, annot=True, cmap='coolwarm', fmt='.2f')
-plt.title('Correlation Matrix')
-plt.show()
+corr = df_numeric.corr()
+fig, ax = plt.subplots(figsize=(12, 8))
+sns.heatmap(corr, annot=False, cmap="coolwarm", ax=ax)
+ax.set_title("Correlation Matrix")
+st.pyplot(fig)
 
-price_correlation = correlation['price'].sort_values(ascending=False)
-print("Top correlations with price:")
-print(price_correlation)
+st.write("**Top Correlations with Price:**")
+st.dataframe(corr["price"].sort_values(ascending=False).to_frame("Correlation"))
 
-df_cleaned = df.copy()
+# ----------------------------------------------------
+# OUTLIER DETECTION
+# ----------------------------------------------------
+st.subheader("📈 Outlier Detection")
 
-duplicate_count = df_cleaned.duplicated().sum()
-print(f"\nNumber of duplicate records: {duplicate_count}")
-
-print("\nChecking for outliers in numerical columns using IQR method:")
 numerical_cols = ['price', 'area', 'bedrooms', 'bathrooms', 'stories', 'parking']
-plt.figure(figsize=(15, 10))
+fig, axes = plt.subplots(2, 3, figsize=(15, 8))
+axes = axes.flatten()
 for i, col in enumerate(numerical_cols):
-    plt.subplot(2, 3, i+1)
-    sns.boxplot(y=df_cleaned[col])
-    plt.title(f'Boxplot of {col}')
+    sns.boxplot(y=df[col], ax=axes[i], color="lightcoral")
+    axes[i].set_title(f"{col}")
+st.pyplot(fig)
 
-plt.figure(figsize=(10, 6))
-plt.scatter(df_cleaned['area'], df_cleaned['price'], alpha=0.5)
-plt.title('Price vs Area')
-plt.xlabel('Area')
-plt.ylabel('Price')
-plt.show()
+# ----------------------------------------------------
+# TRANSFORMATION
+# ----------------------------------------------------
+st.subheader("Log Transformation of Price")
+df_log = df_numeric.copy()
+df_log["price_log"] = np.log(df_log["price"])
 
-df_log = df_cleaned.copy()
-df_log['price_log'] = np.log(df_log['price'])
+fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+sns.histplot(df_log["price"], kde=True, ax=axes[0])
+axes[0].set_title("Original Price Distribution")
+sns.histplot(df_log["price_log"], kde=True, ax=axes[1], color="orange")
+axes[1].set_title("Log-Transformed Price Distribution")
+st.pyplot(fig)
 
-plt.figure(figsize=(12, 5))
-plt.subplot(1, 2, 1)
-sns.histplot(df_log['price'], kde=True)
-plt.title('Original Price Distribution')
-
-plt.subplot(1, 2, 2)
-sns.histplot(df_log['price_log'], kde=True)
-plt.title('Log-Transformed Price Distribution')
-plt.tight_layout()
-plt.show()
-
-binary_cols = ['mainroad', 'guestroom', 'basement', 'hotwaterheating', 'airconditioning', 'prefarea']
-for col in binary_cols:
-    df_log[col] = df_log[col].map({'yes': 1, 'no': 0, 'Yes': 1, 'No': 0})
-
-print("\nAfter converting binary categorical variables:")
-print(df_log[binary_cols].head())
-
-df_log = pd.get_dummies(df_log, columns=['furnishingstatus'], drop_first=True)
-
-boolean_cols = ['furnishingstatus_semi-furnished', 'furnishingstatus_unfurnished']
-for col in boolean_cols:
-    df_log[col] = df_log[col].astype(int)
-
-df_log.head()
-
-from sklearn.preprocessing import StandardScaler, MinMaxScaler, RobustScaler
-
+# ----------------------------------------------------
+# SCALING METHODS
+# ----------------------------------------------------
+st.subheader("Feature Scaling Comparison")
 num_features = ['area', 'bedrooms', 'bathrooms', 'stories', 'parking']
 
-scaler_std = StandardScaler()
-df_log_std = df_log.copy()
-df_log_std[num_features] = scaler_std.fit_transform(df_log[num_features])
+scalers = {
+    "StandardScaler": StandardScaler(),
+    "MinMaxScaler": MinMaxScaler(),
+    "RobustScaler": RobustScaler()
+}
 
-scaler_minmax = MinMaxScaler()
-df_log_minmax = df_log.copy()
-df_log_minmax[num_features] = scaler_minmax.fit_transform(df_log[num_features])
+for name, scaler in scalers.items():
+    df_scaled = df_log.copy()
+    df_scaled[num_features] = scaler.fit_transform(df_log[num_features])
+    st.markdown(f"**{name} Statistics:**")
+    st.dataframe(df_scaled[num_features].describe().round(3).loc[['mean', 'std', 'min', 'max']])
 
-scaler_robust = RobustScaler()
-df_log_robust = df_log.copy()
-df_log_robust[num_features] = scaler_robust.fit_transform(df_log[num_features])
-
-print("After StandardScaler:")
-print(df_log_std[num_features].head())
-
-print("\nAfter MinMaxScaler:")
-print(df_log_minmax[num_features].head())
-
-print("\nAfter RobustScaler:")
-print(df_log_robust[num_features].head())
-
-print("\nStandardScaler statistics:")
-print(df_log_std[num_features].describe().loc[['mean', 'std']].round(3))
-
-print("\nMinMaxScaler statistics:")
-print(df_log_minmax[num_features].describe().loc[['min', 'max']].round(3))
-
-print("\nRobustScaler statistics:")
-print(df_log_robust[num_features].describe().round(3))
-
-from statsmodels.stats.outliers_influence import variance_inflation_factor
-X = df_log_std.drop(['price', 'price_log'], axis=1)
-
-vif_data = pd.DataFrame()
-vif_data["Feature"] = X.columns
-vif_data["VIF"] = [variance_inflation_factor(X.values, i)
-for i in range(X.shape[1])]
-
-print("Variance Inflation Factors:")
-print(vif_data.sort_values("VIF", ascending=False))
-
-plt.figure(figsize=(15, 10))
-for i, col in enumerate(['area', 'bedrooms', 'bathrooms', 'stories', 'parking']):
-    plt.subplot(2, 3, i+1)
-    sns.histplot(df_log[col], kde=True)
-    plt.title(f'Distribution of {col}')
-plt.tight_layout()
-plt.show()
-
-plt.figure(figsize=(10, 6))
-sns.histplot(df_log['price_log'], kde=True)
-plt.title('Distribution of Log-Transformed Price')
-plt.xlabel('Log Price')
-plt.show()
-
-plt.figure(figsize=(15, 10))
-for i, col in enumerate(['area', 'bedrooms', 'bathrooms', 'stories', 'parking']):
-    plt.subplot(2, 3, i+1)
-    sns.regplot(x=col, y='price_log', data=df_log, scatter_kws={'alpha':0.4}, line_kws={'color':'red'})
-    plt.title(f'{col} vs Log Price')
-
-    corr = df_log[col].corr(df_log['price_log'])
-    plt.annotate(f'Correlation: {corr:.2f}', xy=(0.05, 0.95), xycoords='axes fraction',
-                bbox=dict(boxstyle='round,pad=0.5', fc='yellow', alpha=0.5))
-plt.tight_layout()
-plt.show()
-
-plt.figure(figsize=(15, 10))
-categorical_cols = ['mainroad', 'guestroom', 'basement', 'hotwaterheating',
-                   'airconditioning', 'prefarea']
-for i, col in enumerate(categorical_cols):
-    plt.subplot(2, 3, i+1)
-    sns.boxplot(x=col, y='price_log', data=df_log)
-    plt.title(f'{col} vs Log Price')
-plt.tight_layout()
-plt.show()
-
-plt.figure(figsize=(10, 6))
-furnishing_data = df_log.copy()
-furnishing_data['furnishing_status'] = 'furnished'
-furnishing_data.loc[df_log['furnishingstatus_semi-furnished'] == 1, 'furnishing_status'] = 'semi-furnished'
-furnishing_data.loc[df_log['furnishingstatus_unfurnished'] == 1, 'furnishing_status'] = 'unfurnished'
-
-sns.boxplot(x='furnishing_status', y='price_log', data=furnishing_data)
-plt.title('Impact of Furnishing Status on Log Price')
-plt.ylabel('Log Price')
-plt.show()
-
-from sklearn.model_selection import train_test_split
-target = 'price_log'
-X_std = df_log_std.drop(columns=[target])
-y_std = df_log_std[target]
-X_train_std, X_test_std, y_train_std, y_test_std = train_test_split(X_std, y_std, test_size=0.2, random_state=42)
-
-from sklearn.linear_model import LinearRegression
-lr_model = LinearRegression()
-lr_model.fit(X_train_std, y_train_std)
-
-y_pred_std = lr_model.predict(X_test_std)
-
-comparison = pd.DataFrame({
-    'Actual': y_test_std,
-    'Predicted': y_pred_std
+# ----------------------------------------------------
+# MULTICOLLINEARITY (VIF)
+# ----------------------------------------------------
+st.subheader("📉 Variance Inflation Factor (VIF)")
+X = df_log.drop(["price", "price_log"], axis=1)
+vif_data = pd.DataFrame({
+    "Feature": X.columns,
+    "VIF": [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
 })
-print(comparison.head())
+st.dataframe(vif_data.sort_values("VIF", ascending=False))
 
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
-import numpy as np
+# ----------------------------------------------------
+# LINEAR REGRESSION MODEL
+# ----------------------------------------------------
+st.subheader("🏗️ Linear Regression Model")
 
+X_std = df_log.drop(columns=["price", "price_log"])
+y_std = df_log["price_log"]
+X_train, X_test, y_train, y_test = train_test_split(X_std, y_std, test_size=0.2, random_state=42)
 
-r2 = r2_score(y_test_std, y_pred_std)
-mae = mean_absolute_error(y_test_std, y_pred_std)
-mse = mean_squared_error(y_test_std, y_pred_std)
+model = LinearRegression()
+model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+
+results = pd.DataFrame({"Actual": y_test, "Predicted": y_pred})
+st.write("**Prediction Comparison:**")
+st.dataframe(results.head())
+
+r2 = r2_score(y_test, y_pred)
+mae = mean_absolute_error(y_test, y_pred)
+mse = mean_squared_error(y_test, y_pred)
 rmse = np.sqrt(mse)
 
+st.write("### Model Performance")
+st.metric("R² Score", f"{r2:.3f}")
+st.metric("MAE", f"{mae:.3f}")
+st.metric("RMSE", f"{rmse:.3f}")
 
-print(f"R² Score: {r2:.4f}")
-print(f"MAE: {mae:.4f}")
-print(f"MSE: {mse:.4f}")
-print(f"RMSE: {rmse:.4f}")
+st.balloons()
